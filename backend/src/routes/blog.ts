@@ -1,3 +1,4 @@
+import { createBlogInput } from "@devang458/medium-common";
 import { PrismaClient } from "@prisma/client/edge";
 import { withAccelerate } from "@prisma/extension-accelerate";
 import { Hono } from "hono";
@@ -14,25 +15,39 @@ export const blogRouter = new Hono<{
 }>();
 
 blogRouter.use("/*", async (c, next) => {
-    const jwt = c.req.header("Authorization") || "";
-    if (!jwt) {
-        c.status(401);
+    const authHeader = c.req.header("Authorization") || "";
+    const token = authHeader.split(" ")[1]
+    try {
+        const user = await verify(authHeader, c.env.JWT_SECRET);
+        if (user) {
+            c.set("userId", user.id)
+            await next()
+        } else {
+            c.status(500)
+            return c.json({
+                message: "You are not logged in"
+            })
+        }
+    } catch (error) {
+        c.status(403)
         return c.json({
-            error: "unauthorized"
+            message: "Internal server error", error
         })
     }
-    const token = jwt.split(" ")[1]
-    const payload = await verify(token, c.env.JWT_SECRET)
-    if (!payload) {
-        c.status(401)
-        return c.json({ error: "unauthorized" })
-    }
-    c.set("userId", payload.id)
-    await next()
+
 })
 
 blogRouter.post('/', async (c) => {
     const body = await c.req.json();
+    const { success } = createBlogInput.safeParse(body);
+
+    if (!success) {
+        c.status(411)
+        return c.json({
+            message: "Input not correct"
+        })
+    }
+
     const authorId = c.get('userId')
     const prisma = new PrismaClient({
         datasourceUrl: c.env.DATABASE_URL
@@ -73,21 +88,35 @@ blogRouter.put('/', async (c) => {
     })
 })
 
-blogRouter.get('/bulk', async (c) => {
-    const prisma = new PrismaClient({
-        datasourceUrl: c.env.DATABASE_URL
-    }).$extends(withAccelerate())
 
+blogRouter.get('/bulk', async (c) => {
     try {
         const { page = 1, pageSize = 10 } = c.req.query();
         const pageNumber: number = Number(page);
         const itemPerPage: number = Number(pageSize)
 
+        const prisma = new PrismaClient({
+            datasourceUrl: c.env.DATABASE_URL
+        }).$extends(withAccelerate())
+
+
+        
         const blogs = await prisma.blog.findMany({
+            select: {
+                content: true,
+                title: true,
+                id: true,
+                author: {
+                    select: {
+                        name: true
+                    }
+                }
+            },
             skip: (pageNumber - 1) * itemPerPage,
             take: itemPerPage
         })
         return c.json({ blogs })
+
     } catch (error) {
         c.status(500)
         return c.json({ error: "Internal server error" })
@@ -100,10 +129,24 @@ blogRouter.get('/:id', async (c) => {
         datasourceUrl: c.env.DATABASE_URL
     }).$extends(withAccelerate())
 
+    const authorId = c.get('userId')
+    // const random = Math.floor(Math.random()*5)
+    // const Des = [" Enthusiastic traveler, loves trying new cuisines, avid reader, passionate about photography, and enjoys outdoor adventures","Tech-savvy gamer, coffee enthusiast, music lover, fitness junkie, and passionate about DIY projects"," Creative writer, animal lover, tea connoisseur, nature enthusiast, and enjoys practicing mindfulness and yoga.","Alex: Adventure seeker, adrenaline junkie, movie buff, foodie, and passionate about environmental conservation and sustainability."," Artistic soul, loves painting and sketching, enjoys gardening, food blogger, and passionate about social justice issues."]
+    // const descripArr = Des[random]
+
     try {
         const blog = await prisma.blog.findFirst({
             where: {
                 id: Number(id)
+            },
+            select: {
+                title: true,
+                content: true,
+                author: {
+                    select: {
+                        name: true
+                    }
+                }
             }
         })
         return c.json({ blog });
