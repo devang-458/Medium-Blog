@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom"
-import { Avatar } from "./BlogCard"
+import { Avatar, BlogCardProps } from "./BlogCard"
 
-export const Appbar = () => {
+export const Appbar = ({authorName}: BlogCardProps) => {
     return <div className="flex justify-between border-b  py-4 px-10">
         <Link to={"/blogs"} className="flex flex-col justify-center text-xl font-semibold cursor-pointer">
             Medium
@@ -13,7 +13,7 @@ export const Appbar = () => {
                     + Create Post
                 </button>
             </Link>
-            <Avatar size={"big"} name="Devang" />
+            <Avatar size={"big"} name={authorName} />
         </div>
     </div>
 }
